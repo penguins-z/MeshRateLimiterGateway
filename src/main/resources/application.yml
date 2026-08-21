@@ -1,0 +1,9 @@
+server:
+  port: 9000
+
+gateway:
+  backend-url: http://localhost:8080
+
+ratelimit:
+  capacity: 10
+  refill-rate-per-second: 0.1667
