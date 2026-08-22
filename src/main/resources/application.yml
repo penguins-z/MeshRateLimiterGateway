@@ -7,3 +7,10 @@ gateway:
 ratelimit:
   capacity: 10
   refill-rate-per-second: 0.1667
+
+spring:
+   data:
+     redis:
+       host: localhost
+       port: 6379
+
