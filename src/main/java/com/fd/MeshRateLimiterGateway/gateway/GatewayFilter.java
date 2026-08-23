@@ -57,6 +57,11 @@ public class GatewayFilter extends OncePerRequestFilter {
         }
     }
 
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().equals("/status");
+    }
+
     private String extractClientId(HttpServletRequest request) {
         String clientId = request.getHeader("X-Client-Id");
         if (clientId != null && !clientId.isBlank()) {
