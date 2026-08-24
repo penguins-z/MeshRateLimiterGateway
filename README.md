@@ -43,23 +43,6 @@ docker-compose --profile demo run --rm demo
 docker-compose --profile demo down -v
 ```
 
-## Quick Start (Windows - PowerShell)
-
-Requires: Docker running (for Redis + HireTrack), gateway JARs running on ports 9001-9003.
-
-```powershell
-# Start infrastructure
-docker-compose up -d redis hiretrack postgres
-
-# Run 3 gateway instances
-Start-Process java -ArgumentList "-jar","target/MeshRateLimiterGateway-0.0.1-SNAPSHOT.jar","--server.port=9001","--spring.profiles.active=redis"
-Start-Process java -ArgumentList "-jar","target/MeshRateLimiterGateway-0.0.1-SNAPSHOT.jar","--server.port=9002","--spring.profiles.active=redis"
-Start-Process java -ArgumentList "-jar","target/MeshRateLimiterGateway-0.0.1-SNAPSHOT.jar","--server.port=9003","--spring.profiles.active=redis"
-
-# Run demo
-.\demo.ps1
-```
-
 ## How Rate Limiting Works
 
 ```
