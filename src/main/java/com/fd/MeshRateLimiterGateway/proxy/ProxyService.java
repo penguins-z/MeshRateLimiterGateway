@@ -37,7 +37,7 @@ public class ProxyService {
         }
 
         catch (RuntimeException e) {
-            // Backend failed (5xx), circuit breaker counted it, return 502 to indicate bad gateway and to show its not user's fault
+            // Backend failed (5xx), circuit breaker counted it, return 502 to indicate bad gateway and to show it's not user's fault
             return ResponseEntity.status(502)
                     .body("{\"message\":\"Backend error.\"}".getBytes());
         }
@@ -48,7 +48,14 @@ public class ProxyService {
         String query = request.getQueryString();
         String uri = query != null ? path + "?" + query : path;
 
-        ResponseEntity<byte[]> response = webClient
+        byte[] requestBody;
+        try {
+            requestBody = request.getInputStream().readAllBytes();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("Failed to read request body", e);
+        }
+
+        WebClient.RequestHeadersSpec<?> spec = webClient
                 .method(HttpMethod.valueOf(request.getMethod()))
                 .uri(uri)
                 .headers(headers -> {
@@ -57,13 +64,18 @@ public class ProxyService {
                             headers.set(header, request.getHeader(header));
                         }
                     });
-                })
+                });
+
+        if (requestBody.length > 0) {
+            spec = ((WebClient.RequestBodySpec) spec).bodyValue(requestBody);
+        }
+
+        ResponseEntity<byte[]> response = spec
                 .retrieve()
                 .onStatus(status -> true, resp -> Mono.empty())
                 .toEntity(byte[].class)
                 .block();
 
-        // Count 5xx as failures for the circuit breaker
         if (response != null && response.getStatusCode().is5xxServerError()) {
             throw new RuntimeException("Backend returned " + response.getStatusCode());
         }

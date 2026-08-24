@@ -15,30 +15,28 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
 
     private final StringRedisTemplate redisTemplate;
     private final RedisScript<Long> script;
-    private final double capacity;
-    private final double refillRatePerSecond;
+    private final RateLimitProperties properties;
 
-    public RedisTokenBucketRateLimiter(
-            StringRedisTemplate redisTemplate,
-            RedisScript<Long> script,
-            @Value("${ratelimit.capacity}") double capacity,
-            @Value("${ratelimit.refill-rate-per-second}") double refillRatePerSecond) {
+    public RedisTokenBucketRateLimiter(StringRedisTemplate redisTemplate,
+                                       RedisScript<Long> script,
+                                       RateLimitProperties properties) {
         this.redisTemplate = redisTemplate;
         this.script = script;
-        this.capacity = capacity;
-        this.refillRatePerSecond = refillRatePerSecond;
+        this.properties = properties;
     }
 
     @Override
     public boolean allowRequest(String clientId) {
         String key = "ratelimit:hiretrack:" + clientId;
-        double now = Instant.now().toEpochMilli() / 1000.0;
+        double now = System.currentTimeMillis() / 1000.0;
+        double capacity = properties.getCapacityFor(clientId);
+        double refillRate = properties.getRefillRateFor(clientId);
 
         Long result = redisTemplate.execute(
                 script,
                 Collections.singletonList(key),
                 String.valueOf(capacity),
-                String.valueOf(refillRatePerSecond),
+                String.valueOf(refillRate),
                 String.valueOf(now),
                 "1"
         );

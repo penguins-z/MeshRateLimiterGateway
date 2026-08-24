@@ -8,23 +8,24 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @Profile("!redis")
-public class InMemoryTokenBucketRateLimiter implements RateLimiter{
+public class InMemoryTokenBucketRateLimiter implements RateLimiter {
 
-    private final ConcurrentHashMap<String, TokenBucket>  buckets = new ConcurrentHashMap<>();
-    private final double capacity;
-    private final double refillRatePerSecond;
+    private final ConcurrentHashMap<String, TokenBucket> buckets = new ConcurrentHashMap<>();
+    private final RateLimitProperties properties;
 
-    public InMemoryTokenBucketRateLimiter(@Value("${ratelimit.capacity}") double capacity,
-                                          @Value("${ratelimit.refill-rate-per-second}") double refillRatePerSecond) {
-        this.capacity = capacity;
-        this.refillRatePerSecond = refillRatePerSecond;
+    public InMemoryTokenBucketRateLimiter(RateLimitProperties properties) {
+        this.properties = properties;
     }
 
     @Override
     public boolean allowRequest(String clientId) {
-        TokenBucket tokenBucket = buckets.computeIfAbsent(clientId, id -> new TokenBucket(capacity, refillRatePerSecond));
-        synchronized (tokenBucket) {
-            return tokenBucket.tryConsume();
+        double capacity = properties.getCapacityFor(clientId);
+        double refillRate = properties.getRefillRateFor(clientId);
+
+        TokenBucket bucket = buckets.computeIfAbsent(clientId,
+                id -> new TokenBucket(capacity, refillRate));
+        synchronized (bucket) {
+            return bucket.tryConsume();
         }
     }
 }

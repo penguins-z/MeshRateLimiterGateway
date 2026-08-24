@@ -4,9 +4,17 @@ server:
 gateway:
   backend-url: http://localhost:8080
 
+# A real-world system write tier info onto a database, but for this demo we will use a static configuration file
 ratelimit:
-  capacity: 10
-  refill-rate-per-second: 0.1667
+  default-capacity: 10
+  default-refill-rate-per-second: 0.1667
+  clients:
+    rlm:
+      capacity: 50
+      refill-rate-per-second: 0.8333
+    que:
+      capacity: 20
+      refill-rate-per-second: 0.3333
 
 spring:
    data:

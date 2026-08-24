@@ -1,7 +1,7 @@
 package com.fd.MeshRateLimiterGateway.status;
 
+import com.fd.MeshRateLimiterGateway.ratelimit.RateLimitProperties;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,17 +15,14 @@ public class StatusController {
 
     private final StringRedisTemplate redisTemplate;
     private final CircuitBreaker circuitBreaker;
-    private final double capacity;
-    private final double refillRatePerSecond;
+    private final RateLimitProperties properties;
 
     public StatusController(StringRedisTemplate redisTemplate,
                             CircuitBreaker circuitBreaker,
-                            @Value("${ratelimit.capacity}") double capacity,
-                            @Value("${ratelimit.refill-rate-per-second}") double refillRatePerSecond) {
+                            RateLimitProperties properties) {
         this.redisTemplate = redisTemplate;
         this.circuitBreaker = circuitBreaker;
-        this.capacity = capacity;
-        this.refillRatePerSecond = refillRatePerSecond;
+        this.properties = properties;
     }
 
     @GetMapping("/status")
@@ -46,16 +43,20 @@ public class StatusController {
         if (keys != null) {
             double now = System.currentTimeMillis() / 1000.0;
             for (String key : keys) {
+                String clientId = key.replace("ratelimit:hiretrack:", "");
+                double capacity = properties.getCapacityFor(clientId);
+                double refillRate = properties.getRefillRateFor(clientId);
+
                 Map<Object, Object> entries = redisTemplate.opsForHash().entries(key);
                 double tokens = Double.parseDouble(entries.getOrDefault("tokens", "0").toString());
                 double lastRefill = Double.parseDouble(entries.getOrDefault("last_refill", "0").toString());
                 double elapsed = now - lastRefill;
-                double currentTokens = Math.min(capacity, tokens + (elapsed * refillRatePerSecond));
+                double currentTokens = Math.min(capacity, tokens + (elapsed * refillRate));
 
                 Map<String, String> bucketData = new HashMap<>();
                 bucketData.put("currentTokens", String.format("%.2f", currentTokens));
                 bucketData.put("capacity", String.valueOf(capacity));
-                String clientId = key.replace("ratelimit:hiretrack:", "");
+                bucketData.put("tier", properties.getClients().containsKey(clientId) ? "custom" : "default");
                 buckets.put(clientId, bucketData);
             }
         }

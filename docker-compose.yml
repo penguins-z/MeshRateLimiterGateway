@@ -1,0 +1,51 @@
+services:
+  redis:
+    image: redis:7
+    container_name: ratelimiter-redis
+    ports:
+      - "6379:6379"
+
+  gateway-1:
+    build: .
+    container_name: gateway-1
+    ports:
+      - "9001:9000"
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      GATEWAY_BACKEND_URL: http://host.docker.internal:8080
+    depends_on:
+      - redis
+
+  gateway-2:
+    build: .
+    container_name: gateway-2
+    ports:
+      - "9002:9000"
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      GATEWAY_BACKEND_URL: http://host.docker.internal:8080
+    depends_on:
+      - redis
+
+  gateway-3:
+    build: .
+    container_name: gateway-3
+    ports:
+      - "9003:9000"
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      GATEWAY_BACKEND_URL: http://host.docker.internal:8080
+    depends_on:
+      - redis
+
+  demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.demo
+    container_name: gateway-demo
+    depends_on:
+      - gateway-1
+      - gateway-2
+      - gateway-3
+    profiles:
+      - demo
