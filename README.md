@@ -7,8 +7,8 @@ A distributed API gateway that enforces per-client rate limiting using a Redis-b
 Each gateway instance:
 1. **Extracts client ID** from `X-Client-Id` header (falls back to IP)
 2. **Rate limits** via Redis Lua script (atomic token bucket)
-3. **Proxies** the request to HireTrack (if allowed)
-4. **Circuit breaks** if HireTrack is unresponsive (fast-fail with 503)
+3. **Proxies** the request to HireTrack (Backend) if allowed
+4. **Circuit breaks** if HireTrack (Backend) is unresponsive (fast-fail with 503)
 
 ## Features
 
