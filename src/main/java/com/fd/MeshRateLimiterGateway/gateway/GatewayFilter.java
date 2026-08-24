@@ -3,11 +3,15 @@ package com.fd.MeshRateLimiterGateway.gateway;
 import com.fd.MeshRateLimiterGateway.proxy.ProxyService;
 import com.fd.MeshRateLimiterGateway.ratelimit.RateLimiter;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -19,6 +23,9 @@ public class GatewayFilter extends OncePerRequestFilter {
 
     private final RateLimiter rateLimiter;
     private final ProxyService proxyService;
+
+    @Value("${gateway.jwt-secret}")
+    private String jwtSecret;
 
     public GatewayFilter(RateLimiter rateLimiter, ProxyService proxyService) {
         this.rateLimiter = rateLimiter;
@@ -63,9 +70,23 @@ public class GatewayFilter extends OncePerRequestFilter {
     }
 
     private String extractClientId(HttpServletRequest request) {
-        String clientId = request.getHeader("X-Client-Id");
-        if (clientId != null && !clientId.isBlank()) {
-            return clientId;
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            try {
+                String token = authHeader.substring(7);
+                Claims claims = Jwts.parser()
+                        .verifyWith(Keys.hmacShaKeyFor(java.util.HexFormat.of().parseHex(jwtSecret)))
+                        .build()
+                        .parseSignedClaims(token)
+                        .getPayload();
+                String email = claims.getSubject();
+                System.out.println("JWT CLIENT ID: " + email);
+                return email;
+            } catch (Exception e) {
+                System.err.println("JWT PARSE ERROR: " + e.getClass().getName() + " - " + e.getMessage());
+            }
+        } else {
+            System.out.println("NO AUTH HEADER - falling to IP");
         }
         return request.getRemoteAddr();
     }

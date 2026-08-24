@@ -3,22 +3,21 @@ server:
 
 gateway:
   backend-url: http://localhost:8080
+  jwt-secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
 
-# A real-world system write tier info onto a database, but for this demo we will use a static configuration file
 ratelimit:
   default-capacity: 10
   default-refill-rate-per-second: 0.1667
   clients:
-    rlm:
+    "[rlm@gmail.com]":
       capacity: 50
       refill-rate-per-second: 0.8333
-    que:
+    "[que@gmail.com]":
       capacity: 20
       refill-rate-per-second: 0.3333
 
 spring:
-   data:
-     redis:
-       host: localhost
-       port: 6379
-
+  data:
+    redis:
+      host: localhost
+      port: 6379

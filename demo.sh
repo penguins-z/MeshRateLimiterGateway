@@ -36,6 +36,11 @@ redis-cli -h redis FLUSHALL > /dev/null
 echo "[SETUP] Redis flushed."
 echo ""
 
+echo "[SETUP] Restarting gateways to reset circuit breakers..."
+docker restart gateway-1 gateway-2 gateway-3
+sleep 15
+echo "[SETUP] Gateways restarted."
+
 # --- 1. REGISTER BOTH USERS ---
 echo "============================================"
 echo " STEP 1: REGISTER two users via the gateway"
@@ -45,12 +50,12 @@ echo " User 'que' = custom tier (capacity 20)"
 echo "============================================"
 echo ""
 echo "  Registering rlm@gmail.com..."
-REG_RLM=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: rlm" \
+REG_RLM=$(curl -s -X POST -H "Content-Type: application/json" \
     -d '{"name":"rlm","email":"rlm@gmail.com","password":"rlm"}' "$GATEWAY_1/api/auth/register")
 echo "  Response: $REG_RLM"
 echo ""
 echo "  Registering que@gmail.com..."
-REG_QUE=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: que" \
+REG_QUE=$(curl -s -X POST -H "Content-Type: application/json" \
     -d '{"name":"que","email":"que@gmail.com","password":"que"}' "$GATEWAY_1/api/auth/register")
 echo "  Response: $REG_QUE"
 
@@ -62,7 +67,7 @@ echo " POST /api/auth/login -> gateway-1"
 echo "============================================"
 echo ""
 echo "  Logging in rlm..."
-LOGIN_RLM=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: rlm" \
+LOGIN_RLM=$(curl -s -X POST -H "Content-Type: application/json" \
     -d '{"email":"rlm@gmail.com","password":"rlm"}' "$GATEWAY_1/api/auth/login")
 echo "  Response: $LOGIN_RLM"
 TOKEN_RLM=$(echo "$LOGIN_RLM" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -74,7 +79,7 @@ echo "  rlm token captured."
 
 echo ""
 echo "  Logging in que..."
-LOGIN_QUE=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: que" \
+LOGIN_QUE=$(curl -s -X POST -H "Content-Type: application/json" \
     -d '{"email":"que@gmail.com","password":"que"}' "$GATEWAY_1/api/auth/login")
 echo "  Response: $LOGIN_QUE"
 TOKEN_QUE=$(echo "$LOGIN_QUE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -84,12 +89,10 @@ if [ -z "$TOKEN_QUE" ]; then
 fi
 echo "  que token captured."
 
-# Add this AFTER the login section (after "que token captured."), BEFORE Step 3:
-
 # --- SETUP: Create a company ---
 echo ""
 echo "[SETUP] Creating a company for job applications..."
-COMPANY=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: rlm" \
+COMPANY=$(curl -s -X POST -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN_RLM" \
     -d '{"name":"TechCorp","industry":"Technology","website":"https://techcorp.com","email":"hr@techcorp.com","location":"Remote"}' \
     "$GATEWAY_1/api/companies")
@@ -103,10 +106,10 @@ echo " GET /api/applications -> gateway-1"
 echo "============================================"
 echo ""
 echo "  [rlm] GET /api/applications"
-curl -s -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications"
+curl -s -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications"
 echo ""
 echo "  [que] GET /api/applications"
-curl -s -H "X-Client-Id: que" -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications"
+curl -s -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications"
 echo ""
 
 # --- 4. POST - Create application ---
@@ -117,7 +120,7 @@ echo " POST /api/applications -> gateway-1"
 echo "============================================"
 echo ""
 echo "  [rlm] Creating application..."
-CREATED_RLM=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: rlm" \
+CREATED_RLM=$(curl -s -X POST -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN_RLM" \
     -d '{"jobTitle":"Backend Engineer","companyId":1,"status":"SAVED","targetDate":"2026-09-01","jobUrl":"https://example.com/job","description":"Found on LinkedIn"}' \
     "$GATEWAY_1/api/applications")
@@ -127,7 +130,7 @@ echo "  Created application ID: $APP_ID_RLM"
 
 echo ""
 echo "  [que] Creating application..."
-CREATED_QUE=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: que" \
+CREATED_QUE=$(curl -s -X POST -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN_QUE" \
     -d '{"jobTitle":"Backend Engineer","companyId":1,"status":"SAVED","targetDate":"2026-09-01","jobUrl":"https://example.com/job","description":"Found on LinkedIn"}' \
     "$GATEWAY_1/api/applications")
@@ -143,10 +146,10 @@ echo " GET /api/applications/{id} -> gateway-1"
 echo "============================================"
 echo ""
 echo "  [rlm] GET /api/applications/$APP_ID_RLM"
-curl -s -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_RLM"
+curl -s -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_RLM"
 echo ""
 echo "  [que] GET /api/applications/$APP_ID_QUE"
-curl -s -H "X-Client-Id: que" -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications/$APP_ID_QUE"
+curl -s -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications/$APP_ID_QUE"
 echo ""
 
 # --- 5b. CROSS-USER ACCESS TEST ---
@@ -159,7 +162,7 @@ echo " Proves: HireTrack enforces user isolation, gateway proxies faithfully"
 echo "============================================"
 echo ""
 echo "  [rlm] GET /api/applications/$APP_ID_QUE (que's application)"
-curl -s -w "\n  HTTP Status: %{http_code}" -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_QUE"
+curl -s -w "\n  HTTP Status: %{http_code}" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_QUE"
 echo ""
 
 # --- 6. PUT - Update application (rlm) ---
@@ -168,7 +171,7 @@ echo "============================================"
 echo " STEP 6: UPDATE application (full replace) - rlm"
 echo " PUT /api/applications/$APP_ID_RLM -> gateway-1"
 echo "============================================"
-curl -s -X PUT -H "Content-Type: application/json" -H "X-Client-Id: rlm" \
+curl -s -X PUT -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN_RLM" \
     -d '{"jobTitle":"Senior Backend Engineer","companyId":1,"status":"APPLIED","targetDate":"2026-09-15","jobUrl":"https://example.com/job","description":"Updated via gateway"}' \
     "$GATEWAY_1/api/applications/$APP_ID_RLM"
@@ -180,7 +183,7 @@ echo "============================================"
 echo " STEP 7: PATCH application status - que"
 echo " PATCH /api/applications/$APP_ID_QUE/status -> gateway-1"
 echo "============================================"
-curl -s -X PATCH -H "Content-Type: application/json" -H "X-Client-Id: que" \
+curl -s -X PATCH -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN_QUE" \
     -d '{"status":"INTERVIEW_SCHEDULED"}' \
     "$GATEWAY_1/api/applications/$APP_ID_QUE/status"
@@ -194,11 +197,11 @@ echo " DELETE /api/applications/{id} -> gateway-1"
 echo "============================================"
 echo ""
 echo "  [rlm] Deleting application $APP_ID_RLM..."
-DEL_RLM=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_RLM")
+DEL_RLM=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_RLM")
 echo "  HTTP Status: $DEL_RLM (204 = success)"
 echo ""
 echo "  [que] Deleting application $APP_ID_QUE..."
-DEL_QUE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "X-Client-Id: que" -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications/$APP_ID_QUE")
+DEL_QUE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications/$APP_ID_QUE")
 echo "  HTTP Status: $DEL_QUE (204 = success)"
 
 # --- 8b. VERIFY DELETION ---
@@ -210,10 +213,10 @@ echo " Expected: 404 Not Found for both users"
 echo "============================================"
 echo ""
 echo "  [rlm] GET /api/applications/$APP_ID_RLM (should be 404)"
-curl -s -w "\n  HTTP Status: %{http_code}" -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_RLM"
+curl -s -w "\n  HTTP Status: %{http_code}" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications/$APP_ID_RLM"
 echo ""
 echo "  [que] GET /api/applications/$APP_ID_QUE (should be 404)"
-curl -s -w "\n  HTTP Status: %{http_code}" -H "X-Client-Id: que" -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications/$APP_ID_QUE"
+curl -s -w "\n  HTTP Status: %{http_code}" -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications/$APP_ID_QUE"
 echo ""
 
 # --- 9. STATUS endpoint ---
@@ -233,9 +236,11 @@ echo "============================================"
 echo " STEP 10: TIER-BASED RATE LIMIT TEST"
 echo " rlm = custom tier, capacity 50 (sends 55 requests)"
 echo " que = custom tier, capacity 20 (sends 23 requests)"
+echo " Slight variance between expected result and actual result possible due to refill rate "
 echo " Both distributed across 3 gateway instances"
 echo " Proves: different clients get different limits"
 echo " Proves: limits are globally enforced via shared Redis"
+echo " Flushing Redis before test to reset tokens"
 echo "============================================"
 redis-cli -h redis FLUSHALL > /dev/null
 
@@ -245,7 +250,7 @@ RLM_ALLOWED=0; RLM_BLOCKED=0
 for i in $(seq 1 55); do
     PORT_IDX=$((i % 3))
     GW="${PORTS[$PORT_IDX]}"
-    CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GW/api/applications")
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN_RLM" "$GW/api/applications")
     if [ "$CODE" = "429" ]; then
         RLM_BLOCKED=$((RLM_BLOCKED + 1))
         LABEL="BLOCKED"
@@ -264,7 +269,7 @@ QUE_ALLOWED=0; QUE_BLOCKED=0
 for i in $(seq 1 23); do
     PORT_IDX=$((i % 3))
     GW="${PORTS[$PORT_IDX]}"
-    CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Client-Id: que" -H "Authorization: Bearer $TOKEN_QUE" "$GW/api/applications")
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN_QUE" "$GW/api/applications")
     if [ "$CODE" = "429" ]; then
         QUE_BLOCKED=$((QUE_BLOCKED + 1))
         LABEL="BLOCKED"
@@ -298,7 +303,7 @@ redis-cli -h redis FLUSHALL > /dev/null
 sleep 2
 
 for i in $(seq 1 10); do
-    CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Client-Id: cbtest" "$GATEWAY_1/api/applications")
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" "$GATEWAY_1/api/applications")
     if [ "$CODE" = "502" ]; then
         LABEL="TRIED backend, failed"
     elif [ "$CODE" = "503" ]; then
@@ -321,7 +326,7 @@ docker start hiretrack-app
 echo "  HireTrack restarted. Waiting 35 seconds for circuit to transition to half-open..."
 sleep 35
 redis-cli -h redis FLUSHALL > /dev/null
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Client-Id: cbtest" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications")
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications")
 if [ "$CODE" = "200" ] || [ "$CODE" = "401" ]; then
     LABEL="CIRCUIT RECOVERED - backend responding!"
 else
@@ -338,10 +343,10 @@ echo "============================================"
 redis-cli -h redis FLUSHALL > /dev/null
 echo ""
 echo "  [rlm] GET /api/applications"
-curl -s -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications"
+curl -s -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications"
 echo ""
 echo "  [que] GET /api/applications"
-curl -s -H "X-Client-Id: que" -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications"
+curl -s -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications"
 echo ""
 echo "  System is fully recovered and serving data for both users!"
 
@@ -364,7 +369,8 @@ echo " "
 echo " Summary of what was demonstrated:"
 echo "  - All HTTP methods (GET/POST/PUT/PATCH/DELETE) proxied"
 echo "  - Two users with different rate limit tiers"
-echo "    rlm: 50 req/min | que: 20 req/min | default: 10 req/min"
+echo "    rlm@gmail.com: 50 req/min | que@gmail.com: 20 req/min | default: 10 req/min"
+echo "  - JWT-based client identification (cannot be faked)"
 echo "  - Per-client rate limiting via Redis (shared across 3 instances)"
 echo "  - Circuit breaker: fast-fail when backend is down (502 -> 503)"
 echo "  - Automatic recovery when backend comes back (35s wait)"

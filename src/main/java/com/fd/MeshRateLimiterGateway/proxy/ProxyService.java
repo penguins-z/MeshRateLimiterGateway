@@ -67,7 +67,7 @@ public class ProxyService {
                 });
 
         if (requestBody.length > 0) {
-            spec = ((WebClient.RequestBodySpec) spec).bodyValue(requestBody);
+            spec = ((WebClient.RequestBodySpec) spec).body(Mono.just(requestBody), byte[].class);
         }
 
         ResponseEntity<byte[]> response = spec
