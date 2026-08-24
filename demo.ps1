@@ -65,6 +65,10 @@ if (-not $tokenQue) {
 }
 Write-Output "  que token captured."
 
+Write-Output "`n[SETUP] Creating a company..."
+$company = curl.exe -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: rlm" -H "Authorization: Bearer $tokenRlm" -d `@company.json http://localhost:9001/api/companies
+Write-Output "  Response: $company"
+
 # --- 3. GET - List applications for both users ---
 Write-Output "`n============================================"
 Write-Output " STEP 3: GET applications for both users (should be empty)"

@@ -1,5 +1,5 @@
 FROM alpine:3.19
-RUN apk add --no-cache curl bash redis
+RUN apk add --no-cache curl bash redis docker-cli
 COPY demo.sh /demo.sh
 RUN chmod +x /demo.sh
 ENTRYPOINT ["/demo.sh"]

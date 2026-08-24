@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================
 # MeshRateLimiterGateway - Full Demo Script
-# Cross-platform (runs inside Docker)
+# Self-contained (runs inside Docker, controls sibling containers)
 # ============================================
 
 set -e
@@ -19,10 +19,14 @@ echo "============================================"
 # Wait for gateways to be ready
 echo ""
 echo "[SETUP] Waiting for gateways to be ready..."
-for i in {1..30}; do
+for i in $(seq 1 60); do
     if curl -s -o /dev/null -w "%{http_code}" "$GATEWAY_1/status" | grep -q "200"; then
         echo "[SETUP] Gateways are ready."
         break
+    fi
+    if [ "$i" -eq 60 ]; then
+        echo "[SETUP] ERROR: Gateways not ready after 60s. Exiting."
+        exit 1
     fi
     sleep 1
 done
@@ -79,6 +83,17 @@ if [ -z "$TOKEN_QUE" ]; then
     exit 1
 fi
 echo "  que token captured."
+
+# Add this AFTER the login section (after "que token captured."), BEFORE Step 3:
+
+# --- SETUP: Create a company ---
+echo ""
+echo "[SETUP] Creating a company for job applications..."
+COMPANY=$(curl -s -X POST -H "Content-Type: application/json" -H "X-Client-Id: rlm" \
+    -H "Authorization: Bearer $TOKEN_RLM" \
+    -d '{"name":"TechCorp","industry":"Technology","website":"https://techcorp.com","email":"hr@techcorp.com","location":"Remote"}' \
+    "$GATEWAY_1/api/companies")
+echo "  Response: $COMPANY"
 
 # --- 3. GET - List applications ---
 echo ""
@@ -216,7 +231,7 @@ echo ""
 echo ""
 echo "============================================"
 echo " STEP 10: TIER-BASED RATE LIMIT TEST"
-echo " rlm = custom tier, capacity 50 (sends 53 requests)"
+echo " rlm = custom tier, capacity 50 (sends 55 requests)"
 echo " que = custom tier, capacity 20 (sends 23 requests)"
 echo " Both distributed across 3 gateway instances"
 echo " Proves: different clients get different limits"
@@ -225,9 +240,9 @@ echo "============================================"
 redis-cli -h redis FLUSHALL > /dev/null
 
 echo ""
-echo "  --- rlm: 53 requests (capacity 50) ---"
+echo "  --- rlm: 55 requests (capacity 50) ---"
 RLM_ALLOWED=0; RLM_BLOCKED=0
-for i in $(seq 1 53); do
+for i in $(seq 1 55); do
     PORT_IDX=$((i % 3))
     GW="${PORTS[$PORT_IDX]}"
     CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GW/api/applications")
@@ -241,7 +256,7 @@ for i in $(seq 1 53); do
     echo "  Request $i -> gateway-$((PORT_IDX + 1)) -> HTTP $CODE ($LABEL)"
 done
 echo ""
-echo "  rlm TOTAL: Allowed=$RLM_ALLOWED | Blocked(429)=$RLM_BLOCKED (expected: 50 allowed, 3 blocked)"
+echo "  rlm TOTAL: Allowed=$RLM_ALLOWED | Blocked(429)=$RLM_BLOCKED (expected: 50 allowed, 5 blocked)"
 
 echo ""
 echo "  --- que: 23 requests (capacity 20) ---"
@@ -272,26 +287,75 @@ echo "  Different clients, different limits, same Redis, same gateway instances!
 echo ""
 echo "============================================"
 echo " STEP 11: CIRCUIT BREAKER TEST"
-echo " NOTE: Cannot stop HireTrack from inside this container."
-echo " To test circuit breaker, run manually:"
-echo "   docker stop hiretrack-app"
-echo "   curl http://localhost:9001/api/applications"
-echo "   (repeat - observe 502 -> 503 transition)"
-echo "   docker start hiretrack-app"
-echo "   (wait 35s, then requests succeed again)"
+echo " Stopping HireTrack to simulate backend failure"
+echo " Circuit breaker config: 50% failure threshold, window=5"
+echo " Expected: first 3 requests = 502 (tried backend, failed)"
+echo "           remaining = 503 (circuit OPEN, instant fail)"
 echo "============================================"
+docker stop hiretrack-app
+echo "  HireTrack stopped."
+redis-cli -h redis FLUSHALL > /dev/null
+sleep 2
 
-# --- 12. CLEANUP ---
+for i in $(seq 1 10); do
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Client-Id: cbtest" "$GATEWAY_1/api/applications")
+    if [ "$CODE" = "502" ]; then
+        LABEL="TRIED backend, failed"
+    elif [ "$CODE" = "503" ]; then
+        LABEL="CIRCUIT OPEN - instant fail"
+    else
+        LABEL="HTTP $CODE"
+    fi
+    echo "  Request $i -> HTTP $CODE ($LABEL)"
+done
+
+# --- 12. CIRCUIT BREAKER RECOVERY ---
 echo ""
 echo "============================================"
-echo " STEP 12: CLEANUP"
+echo " STEP 12: CIRCUIT BREAKER RECOVERY"
+echo " Restarting HireTrack, waiting 35s for circuit to half-open"
+echo " Circuit will send 1 probe request - if it succeeds, closes"
+echo " Expected: HTTP 200 (circuit recovered, traffic flows again)"
+echo "============================================"
+docker start hiretrack-app
+echo "  HireTrack restarted. Waiting 35 seconds for circuit to transition to half-open..."
+sleep 35
+redis-cli -h redis FLUSHALL > /dev/null
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Client-Id: cbtest" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications")
+if [ "$CODE" = "200" ] || [ "$CODE" = "401" ]; then
+    LABEL="CIRCUIT RECOVERED - backend responding!"
+else
+    LABEL="HTTP $CODE"
+fi
+echo "  Recovery probe -> HTTP $CODE ($LABEL)"
+
+# --- 12b. PROVE SYSTEM IS FULLY BACK ---
+echo ""
+echo "============================================"
+echo " STEP 12b: PROVE system is fully operational"
+echo " Fetching real data for both users after recovery"
+echo "============================================"
+redis-cli -h redis FLUSHALL > /dev/null
+echo ""
+echo "  [rlm] GET /api/applications"
+curl -s -H "X-Client-Id: rlm" -H "Authorization: Bearer $TOKEN_RLM" "$GATEWAY_1/api/applications"
+echo ""
+echo "  [que] GET /api/applications"
+curl -s -H "X-Client-Id: que" -H "Authorization: Bearer $TOKEN_QUE" "$GATEWAY_1/api/applications"
+echo ""
+echo "  System is fully recovered and serving data for both users!"
+
+# --- 13. CLEANUP ---
+echo ""
+echo "============================================"
+echo " STEP 13: CLEANUP"
 echo " Removing both test users from HireTrack database"
 echo " Flushing Redis rate limit data"
 echo "============================================"
 redis-cli -h redis FLUSHALL > /dev/null
 echo "  Redis flushed."
-echo "  NOTE: Run this to remove test users from HireTrack DB:"
-echo "  docker exec hiretrack-postgres psql -U postgres -d hiretrack -c \"DELETE FROM users WHERE email IN ('rlm@gmail.com','que@gmail.com');\""
+docker exec hiretrack-postgres psql -U postgres -d hiretrack -c "DELETE FROM users WHERE email IN ('rlm@gmail.com','que@gmail.com');" 2>/dev/null
+echo "  Users rlm@gmail.com and que@gmail.com removed from database."
 
 echo ""
 echo "============================================"
@@ -302,7 +366,8 @@ echo "  - All HTTP methods (GET/POST/PUT/PATCH/DELETE) proxied"
 echo "  - Two users with different rate limit tiers"
 echo "    rlm: 50 req/min | que: 20 req/min | default: 10 req/min"
 echo "  - Per-client rate limiting via Redis (shared across 3 instances)"
+echo "  - Circuit breaker: fast-fail when backend is down (502 -> 503)"
+echo "  - Automatic recovery when backend comes back (35s wait)"
 echo "  - Cross-user isolation (rlm cannot access que's data)"
 echo "  - Status endpoint for observability"
-echo "  - Circuit breaker: test manually with docker stop/start"
 echo "============================================"
