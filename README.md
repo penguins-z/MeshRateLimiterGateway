@@ -33,15 +33,14 @@ Each gateway instance:
 ## Quick Start (Docker - fully self-contained)
 
 ```bash
-# Clone and run everything (HireTrack + Postgres + Redis + 3 Gateways)
-docker-compose up -d --build
+git clone https://github.com/penguins-z/MeshRateLimiterGateway
+cd MeshRateLimiterGateway
 
-# Run the automated demo (registers users, tests CRUD, rate limits, circuit breaker)
-docker-compose --profile demo run --rm demo
+# Start everything (HireTrack + Postgres + Redis + 3 Gateways + Demo)
+docker-compose --profile demo up --build
 
 # Cleanup
 docker-compose --profile demo down -v
-```
 
 ## How Rate Limiting Works
 
