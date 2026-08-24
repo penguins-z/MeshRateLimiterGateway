@@ -153,4 +153,4 @@ ratelimit:
  WebClient (not RestTemplate) 
  Non-blocking I/O; does not tie up servlet threads while waiting for backend 
  Profiles for switching 
- @Profile("redis") vs @Profile("!redis") - easy local dev without Redis 
+ @Profile("redis") vs @Profile("!redis") - easy local dev without Redis  
