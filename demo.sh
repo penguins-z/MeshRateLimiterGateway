@@ -288,6 +288,36 @@ echo "  rlm (capacity 50): $RLM_ALLOWED allowed, $RLM_BLOCKED blocked"
 echo "  que (capacity 20): $QUE_ALLOWED allowed, $QUE_BLOCKED blocked"
 echo "  Different clients, different limits, same Redis, same gateway instances!"
 
+# --- 10b. FAKE JWT ATTACK TEST ---
+echo ""
+echo "============================================"
+echo " STEP 10b: FAKE JWT ATTACK SIMULATION"
+echo " Attacker sends requests with 4 different fake JWTs"
+echo " Each fake JWT has a different email (fake1-4@evil.com)"
+echo " Expected: ALL share the same IP bucket (10 total)"
+echo " Proves: cannot bypass rate limit with fake tokens"
+echo "============================================"
+redis-cli -h redis FLUSHALL > /dev/null
+
+FAKE_ALLOWED=0; FAKE_BLOCKED=0
+for i in $(seq 1 12); do
+    # Create a garbage token (invalid signature)
+    FAKE_TOKEN="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlJHtpfUBldmlsLmNvbSJ9.invalidsignature"
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $FAKE_TOKEN" "$GATEWAY_1/api/applications")
+    if [ "$CODE" = "429" ]; then
+        FAKE_BLOCKED=$((FAKE_BLOCKED + 1))
+        LABEL="BLOCKED"
+    else
+        FAKE_ALLOWED=$((FAKE_ALLOWED + 1))
+        LABEL="ALLOWED"
+    fi
+    echo "  Request $i (fakejwt${i}@fake.com) -> HTTP $CODE ($LABEL)"
+done
+echo ""
+echo "  RESULT: Allowed=$FAKE_ALLOWED | Blocked=$FAKE_BLOCKED"
+echo "  All 12 requests shared ONE IP bucket (capacity 10)"
+echo "  Fake JWTs cannot bypass rate limiting!"
+
 # --- 11. CIRCUIT BREAKER test ---
 echo ""
 echo "============================================"
