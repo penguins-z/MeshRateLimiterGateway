@@ -37,11 +37,13 @@ git clone https://github.com/penguins-z/MeshRateLimiterGateway
 cd MeshRateLimiterGateway
 
 # Start everything (HireTrack + Postgres + Redis + 3 Gateways + Demo)
-docker-compose --profile demo up --build
+
+docker-compose up -d --build
+docker-compose --profile demo run --rm demo
 
 # Cleanup
 docker-compose --profile demo down -v
-
+```
 
 ````
 ## How Rate Limiting Works
