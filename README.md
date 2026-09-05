@@ -1,6 +1,6 @@
 # MeshRateLimiterGateway
 
-A distributed API gateway that enforces per-client rate limiting using a Redis-backed token bucket algorithm, proxies the backend request response and protects the backend with a circuit breaker.
+A distributed API gateway that enforces per-client rate limiting using a Redis-backed token bucket algorithm, acts as a proxy for the backend request response and protects the backend with a circuit breaker.
 
 ## Architecture
 
